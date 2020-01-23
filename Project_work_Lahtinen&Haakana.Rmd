@@ -1,0 +1,391 @@
+---
+title: "Project_work_Lahtinen&Haakana"
+author: "Elina Lahtinen"
+date: "7/8/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## FoDSS2019 Project work Lahtinen & Haakana
+```{r}
+#settin working directory
+setwd("/Users/Lahtinen/FoDS_SS2019/Project_work")
+
+install.packages('pROC', repos = "http://cran.us.r-project.org") 
+library('pROC')
+install.packages("cowplot")
+library(cowplot)
+install.packages("ggplot2")
+library(ggplot2)
+
+#Getting the data set
+source("Projecthelper.R")
+vote92 <- getVote92()
+
+summary(vote92)
+str(vote92)
+```
+##Exploring the relationships between variables
+```{r}
+a = table(vote92$dem, vote92$vote)
+barplot(a, legend = rownames(a),
+        col = c("red", "blue"),
+        main = "Votes divided by dem. 1 = yes, 0 = no",
+        ylab = "Amount of votes",
+        xlab = "Candidates",
+        cex.main = 0.5,
+        ylim = c(0,600))
+#Clinton got most votes so he won the election.
+#Most of those who indetifys with the democratic party voted for Clinton. But that can be expected since Clinton was a canditate of the democratic party. Still a small part of those who are identifying with the democratic party did not vote for Clinton.
+
+#Bar chart of how the votes were divided between candidates and voters' gender
+x = table(vote92$female, vote92$vote)
+barplot(x, legend = rownames(x),
+        ylab = "Amount of votes",
+        xlab = "Candidates",
+        main = "Votes divided by gender, 1 = Female, 0 = Male",
+        col = c("blue", "red"))
+
+#More women voted for Clinton than Bush or Perot. Only slighly more men voted for Clinton than Bush or Perot.
+
+y = table(vote92$natlecon, vote92$vote)
+barplot(y, legend = rownames(y),
+        col = c("blue", "red", "green"),
+        ylim = c(0,450),
+        main = "Votes divided by natlecon. 1 = better, 0 = same, -1 = worse",
+        xlab = "Candidates",
+        ylab = "Amount of votes")
+#Most of those who voted for Clinton percived that national ecomonic conditions had gotten worse over the last 12 months. Same can be seen with those who voted for Bush and Perot. 
+
+y = table(vote92$natlecon, vote92$voteclinton)
+barplot(y, legend = rownames(y),
+        col = c("blue", "red", "green"),
+        ylim = c(0,500),
+        main = "Votes divided by natlecon. 1 = better, 0 = same, -1 = worse",
+        xlab = "Voted for Clinton",
+        ylab = "Amount of votes")
+
+
+z = table(vote92$persfinance, vote92$vote)
+barplot(z, legend = rownames(z),
+        col = c("blue", "red", "green"),
+        ylim = c(0,500),
+        main = "Votes divided by persfinance. 1 = better, 0 = same, -1 = worse",
+        xlab = "Candidates",
+        ylab = "Amount of votes")
+
+
+boxplot(clintondis ~ voteclinton,
+        data = vote92,
+        col = "blue",
+        horizontal = T,
+        main = "Influence of cr.clintondis",
+        xlab = "cr.clintondis",
+        ylab = "Voted for Clinton")
+#Most of those who voted for Clinton shrared the same political ideology. Boxplot seems to have a few outliers but they don't differ too much of the mean to have a great influence on the modeling. 
+
+boxplot(bushdis ~ voteclinton,
+        data = vote92,
+        col = "red",
+        horizontal = T,
+        main = "Influence of cr.bushdis",
+        xlab = "cr.bushdis",
+        ylab = "Voted for Clinton")
+#those who didn't vote for Clinton shared more the same political ideology as Bush as those who did vote but the difference isn't big. 
+boxplot(perotdis ~ voteclinton,
+        data = vote92,
+        col = "green",
+        horizontal = T,
+        main = "Influence of cr.perotdis",
+        xlab = "cr.perotdis",
+        ylab = "Voted for Clinton")
+
+```
+##Splitting data into train and test and treating outliers
+```{r}
+#Splitting data into train and test
+set.seed(777)
+train.Index <- sample(1:nrow(vote92), round(0.7*nrow(vote92)), replace = F)
+  vote92.train <- vote92[train.Index,]
+  vote92.test <- vote92[-train.Index,]
+  
+
+#Taking care of outliers
+zScores <- function(var){ mu <- mean(var)
+sd <- sd(var)
+scores <- (var - mu)/sd 
+return(scores)
+}
+
+#Replacing outliers with mean +1 standard deviations
+for (var in c("cr.clintondis", "cr.bushdis", "cr.perotdis")) {
+x <- zScores(vote92.train[[var]])
+y <- (vote92.test[[var]] - mean(vote92.train[[var]]) ) / sd(vote92.train[[var]])
+
+
+vote92.train[[var.new]] <- vote92.train[[var]]
+vote92.train[[var.new]][x > 1] <- mean(vote92.train[[var]]) +
+1*sd(vote92.train[[var]])
+
+vote92.test[[var.new]] <- vote92.test[[var]]
+vote92.test[[var.new]][y > 1] <- mean(vote92.train[[var]]) +
+1*sd(vote92.train[[var]]) 
+}
+
+```
+##Logistic regression
+```{r}
+#Model 1 
+#We are using logistic regression for modeling, because we are trying to predict whether a person voted for Clinton or not. Creating the first model.
+model1 <- glm(voteclinton ~ dem , data = vote92.train, family = binomial)
+summary(model1)
+
+model1.pred <- predict(model1, vote92.test, type = "response")
+summary(model1.pred)
+
+#Creating a new data frame that contains the probabilities of voting for Clinton along with the actual Clinton voters.
+predicted.data1 <- data.frame(
+  probability.of.voteclinton1=model1$fitted.values,
+  dem=vote92.train$dem)
+
+summary(predicted.data1)
+str(predicted.data1)
+ 
+## We can plot the data
+ggplot(data=predicted.data1, aes(x=dem, y=probability.of.voteclinton1)) +
+  geom_point(aes(color=dem), size = 5) +
+  xlab("dem") +
+  ylab("Predicted probability of voting clinton")
+
+#When dem has a value of 1, the probability of voting Clinton is above 0.8. When dem has a value of 0, the probability of votin Clinton is below 0.2.
+
+xtabs(~ probability.of.voteclinton1 + dem, data=predicted.data1)
+
+```
+```{r}
+#Making Accuracy function for computing the fit, Model 1
+Accuracy <- function(pred, real, threshold = 0.5){
+  predClass <- ifelse(pred > threshold, 1, 0)
+  acc <- sum(predClass == real) / length(real)
+  return(acc)
+}
+#Function for cutoffs
+cutoffs <- seq(0, 1, by = 0.1)
+k <- rep(NA, length(cutoffs))
+names(k) <- cutoffs
+
+for (i in 1:length(cutoffs)) {
+k[i] = Accuracy(pred = model1.pred, real = vote92.test$voteclinton, threshold = cutoffs[i])
+}
+#Calculating cut-points of Accuracy
+plot(y = k, x = cutoffs, type = "p", ylab = "Accuracy")
+abline(v = names(which.max(k)), col = "red", lty = 2)
+
+#Changing accuracy function
+Accuracy <- function(pred, real){
+acc <- sum(pred == real) / length(real)
+return(acc)
+}
+
+#Creating variables reals and preds
+reals <- vote92.test$voteclinton
+preds <- ifelse(model1.pred > 0.5, 1, 0) # infering the class
+table(preds, reals) # confusion matrix
+#Accuracy for confusion matrix
+Accuracy(preds, reals)
+
+
+#plotting a ROC curve
+#dev.off()
+
+#ROC curve
+ggroc(roc(reals, model1.pred))
+
+#calculating area under the ROC curve
+auc(reals, model1.pred)
+
+```
+```{r}
+#RMSE for model 1
+rmse <- function(pred, real){
+  rmse <- sqrt(mean((real - pred)^2))
+  return(rmse)
+}
+rmse.model1 <- rmse(pred = model1.pred, real = vote92.test$voteclinton)
+rmse.model1
+```
+
+```{r}
+#Model 2
+#Creating features to use in second model
+features <- c('cr.clintondis', 'dem', 'natlecon')
+summary(features2)
+
+#Creating the second model
+model2 <- glm(voteclinton ~ . , data = vote92.train[, c(features, "voteclinton")], family = binomial(link = "logit"))
+summary(model2)
+
+model2.pred <- predict(model2, vote92.test, type = "response")
+summary(model2.pred)
+
+#Creating a new data frame that contains the probabilities of voting for Clinton along with the actual Clinton voters.
+predicted.data2 <- data.frame(
+  probability.of.voteclinton2=model2$fitted.values,
+  features=vote92.train[, c(features, "voteclinton")])
+
+predicted.data2 <- predicted.data2[order(predicted.data2$probability.of.voteclinton2, decreasing = FALSE),]
+predicted.data2$rank <- 1:nrow(predicted.data2)
+
+summary(predicted.data2)
+str(predicted.data2)
+ 
+## We can plot the data
+ggplot(data=predicted.data2, aes(x=rank, y=probability.of.voteclinton2)) +
+  geom_point(aes(color=features.voteclinton), alpha = 1, shape = 4, stroke = 2) +
+  xlab("features") +
+  ylab("Predicted probability of voting clinton")
+
+#With these features the probability of voting for Clinton is above 0.75.
+```
+
+```{r}
+#Making Accuracy funtion for computing the fit, Model 2
+Accuracy <- function(pred, real, threshold = 0.5){
+  predClass <- ifelse(pred > threshold, 1, 0)
+  acc <- sum(predClass == real) / length(real)
+  return(acc)
+}
+#Function for cutoffs
+cutoffs <- seq(0, 1, by = 0.1)
+k <- rep(NA, length(cutoffs))
+names(k) <- cutoffs
+
+for (i in 1:length(cutoffs)) {
+k[i] = Accuracy(pred = model2.pred, real = vote92.test$voteclinton, threshold = cutoffs[i])
+}
+#Calculating cut-points of Accuracy
+plot(y = k, x = cutoffs, type = "p", ylab = "Accuracy")
+abline(v = names(which.max(k)), col = "red", lty = 2)
+
+#Changing accuracy function
+Accuracy <- function(pred, real){
+acc <- sum(pred == real) / length(real)
+return(acc)
+}
+
+
+#Creating variables reals and preds
+reals <- vote92.test$voteclinton
+preds <- ifelse(model2.pred > 0.5, 1, 0) # infering the class
+table(preds, reals) # confusion matrix
+#Accuracy for confusion matrix
+Accuracy(preds, reals)
+
+#plotting a ROC curve
+#dev.off()
+
+#ROC curve
+ggroc(roc(reals, model2.pred))
+
+#calculating area under the ROC curve
+auc(reals, model2.pred)
+
+```
+
+```{r}
+#RMSE for model 2
+rmse <- function(pred, real){
+  rmse <- sqrt(mean((real - pred)^2))
+  return(rmse)
+}
+rmse.model2 <- rmse(pred = model2.pred, real = vote92.test$voteclinton)
+rmse.model2
+```
+
+```{r}
+#Model3
+#Features to be used in model training
+features1 <- c('cr.clintondis', 'cr.bushdis', 'cr.perotdis', 'dem', 'female', 'persfinance', 'natlecon', 'rep', 'other' )
+
+#Creating hte third model
+model3 <- glm(voteclinton ~ . , data = vote92.train[, c(features1, "voteclinton")], family = binomial(link = "logit"))
+summary(model3)
+
+model3.pred <- predict(model3, vote92.test, type = "response")
+summary(model3.pred)
+
+#Creating a new data frame that contains the probabilities of voting for Clinton along with the actual Clinton voters
+predicted.data3 <- data.frame(
+  probability.of.voteclinton3=model3$fitted.values,
+  voteclinton=vote92.train$voteclinton)
+
+#Adding a new column to the data frame that has the rank of each sample, from low probability to high probability
+predicted.data3 <- predicted.data3[
+  order(predicted.data3$probability.of.voteclinton3, decreasing=FALSE),]
+predicted.data3$rank <- 1:nrow(predicted.data3)
+
+#Now plotting the data
+ggplot(data=predicted.data3, aes(x=rank, y=probability.of.voteclinton3)) +
+  geom_point(aes(color=voteclinton), alpha=1, shape=4, stroke=2) +
+  xlab("Index") +
+  ylab("Predicted probability of voting Clinton")
+#With these features the probability of voting Clinton is above 0.5.
+
+```
+
+```{r}
+#Making Accuracy funtion for computing the fit
+Accuracy <- function(pred, real, threshold = 0.5){
+  predClass <- ifelse(pred > threshold, 1, 0)
+  acc <- sum(predClass == real) / length(real)
+  return(acc)
+}
+#Function for cutoffs
+cutoffs <- seq(0, 1, by = 0.1)
+k <- rep(NA, length(cutoffs))
+names(k) <- cutoffs
+
+for (i in 1:length(cutoffs)) {
+k[i] = Accuracy(pred = model3.pred, real = vote92.test$voteclinton, threshold = cutoffs[i])
+}
+#Calculating cut-points of Accuracy
+plot(y = k, x = cutoffs, type = "p", ylab = "Accuracy")
+abline(v = names(which.max(k)), col = "red", lty = 2)
+
+#Changing accuracy function
+Accuracy <- function(pred, real){
+acc <- sum(pred == real) / length(real)
+return(acc)
+}
+
+#Creating variables reals and preds
+reals <- vote92.test$voteclinton
+preds <- ifelse(model3.pred > 0.5, 1, 0) # infering the class
+table(preds, reals) # confusion matrix
+#Accuracy for confusion matrix
+Accuracy(preds, reals)
+
+
+#plotting a ROC curve
+#dev.off()
+
+#ROC curve
+ggroc(roc(reals, model3.pred))
+
+#calculating area under the ROC curve
+auc(reals, model3.pred)
+
+```
+
+```{r}
+#RMSE for model 3
+rmse <- function(pred, real){
+  rmse <- sqrt(mean((real - pred)^2))
+  return(rmse)
+}
+rmse.model3 <- rmse(pred = model3.pred, real = vote92.test$voteclinton)
+rmse.model3
+```
