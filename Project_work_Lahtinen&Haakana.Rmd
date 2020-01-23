@@ -1,6 +1,6 @@
 ---
 title: "Project_work_Lahtinen&Haakana"
-author: "Elina Lahtinen"
+author: "Elina Lahtinen, Veikko Haakana"
 date: "7/8/2019"
 output: pdf_document
 ---
